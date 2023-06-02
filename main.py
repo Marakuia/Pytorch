@@ -29,50 +29,66 @@ class Network(nn.Module):
 
         layers_list = []
 
-        # # input_layer1 = nn.Linear(self.model_resnet.fc.in_features, self.num_filter)
-        # input_layer = nn.Conv2d(self.model_resnet.fc.in_features, self.num_filter, self.size_filter, self.stride, self.padding)
-        # conv_layers = nn.Conv2d(self.num_filter, self.num_filter, self.size_filter, self.stride, self.padding)
-        # output_layer = nn.Linear(self.num_filter, 10)
-        # #ad = nn.AdaptiveAvgPool2d((3, 1))
+        # input_layer1 = nn.Linear(self.model_resnet.fc.in_features, self.num_filter)
+        input_layer = nn.Conv2d(128, self.num_filter, self.size_filter, self.stride, self.padding)
 
-        # # layers_list.append(input_layer1)
-        # #layers_list.append(ad)
-        # layers_list.append(input_layer)
-        # layers_list.append(act_func)
-        # layers_list.append(nn.MaxPool2d(2, 1))
-
-        # for i in range(self.num_layers):
-        #     layers_list.append(conv_layers)
-        #     layers_list.append(act_func)
-        #     layers_list.append(nn.MaxPool2d(2, 1))
-
-        # layers_list.append(nn.Flatten())
-        # layers_list.append(nn.Linear(self.num_filter * 4, self.num_filter))
-        # # layers_list.append(act_func)
-        # layers_list.append(output_layer)
-        # # layers_list.append(act_func)
-
-        input_layer = nn.Linear(self.model_resnet.fc.in_features, int(self.num_filter / 2))
-        av_layer = nn.Linear(input_layer.out_features, self.num_filter)
-        av_layer1 = nn.Linear(self.num_filter, self.num_filter)
-
+        conv_layers = nn.Conv2d(self.num_filter, self.num_filter, self.size_filter, self.stride, self.padding)
         output_layer = nn.Linear(self.num_filter, 10)
+
+
+        # layers_list.append(input_layer1)
 
         layers_list.append(input_layer)
         layers_list.append(act_func)
-        layers_list.append(av_layer)
+        layers_list.append(nn.MaxPool2d(2, 1))
+
+        for i in range(self.num_layers):
+            layers_list.append(conv_layers)
+            layers_list.append(act_func)
+            layers_list.append(nn.MaxPool2d(2, 1))
+
+        layers_list.append(nn.Flatten())
+        layers_list.append(nn.Linear(1024, self.num_filter))
         layers_list.append(act_func)
-        layers_list.append(av_layer1)
-        layers_list.append(act_func)
-        layers_list.append(nn.Dropout())
         layers_list.append(output_layer)
+        # layers_list.append(act_func)
+
+        # input_layer = nn.Linear(self.model_resnet.fc.in_features, int(self.num_filter / 2))
+        # av_layer = nn.Linear(input_layer.out_features, self.num_filter)
+        # av_layer1 = nn.Linear(self.num_filter, self.num_filter)
+        #
+        # output_layer = nn.Linear(self.num_filter, 10)
+        #
+        # layers_list.append(input_layer)
+        # layers_list.append(act_func)
+        # layers_list.append(av_layer)
+        # layers_list.append(act_func)
+        # layers_list.append(av_layer1)
+        # layers_list.append(act_func)
+        # layers_list.append(nn.Dropout())
+        # layers_list.append(output_layer)
 
 
         layers = nn.Sequential(*layers_list)
         self.model_resnet.fc = layers
 
     def forward(self, x):
-        x = self.model_resnet(x)
+        # x = self.model_resnet(x)
+        # return x
+        x = self.model_resnet.conv1(x)
+        x = self.model_resnet.bn1(x)
+        x = self.model_resnet.relu(x)
+        x = self.model_resnet.maxpool(x)
+
+        x = self.model_resnet.layer1(x)
+        x = self.model_resnet.layer2(x)
+        x = self.model_resnet.layer3(x)
+        x = self.model_resnet.layer4(x)
+
+        x = self.model_resnet.avgpool(x)
+        x = self.model_resnet.fc(x.reshape(x.size(0), 128, 8, -1))
+
+
         return x
 
 
@@ -92,9 +108,10 @@ def train(model, optimiz, loss_fn, train_loader, validation_loader, train_device
         model.train()
         for image, image_class in train_loader:
             image, image_class = image.to(train_device), image_class.to(train_device)
+            print(image.shape)
             optimiz.zero_grad()
             predict = model(image)
-            # print(predict.shape)
+            print(predict.shape)
             loss = loss_fn(predict, image_class)
             loss.backward()
             optimiz.step()
@@ -149,7 +166,14 @@ print(resnet_model.fc.in_features)
 net = Network(2, (NUMBER_OF_FILTERS, SIZE_OF_FILTERS, STRIDE, PADDING), "relu", resnet_model)
 print(net)
 
-transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+# transform = transforms.Compose([transforms.ToTensor(), transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
+transform = transforms.Compose([
+            transforms.Resize((256, 256)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.4914, 0.4822, 0.4465],
+                                 std=[0.2023, 0.1994, 0.2010])
+                              ])
+
 train_data = torchvision.datasets.CIFAR10(root='./data_cifar10', train=True, download=True, transform=transform)
 train_data_loader = torch.utils.data.DataLoader(train_data, batch_size=32, shuffle=True, num_workers=2)
 validation_data = torchvision.datasets.CIFAR10(root='./data_cifar10', train=False, download=True, transform=transform)
